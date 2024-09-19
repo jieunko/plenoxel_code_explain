@@ -631,24 +631,26 @@ __global__ void render_ray_kernel(
         torch::PackedTensorAccessor32<float, 2, torch::RestrictPtrTraits> out,
         float* __restrict__ log_transmit_out = nullptr) {
     CUDA_GET_THREAD_ID(tid, int(rays.origins.size(0)) * WARP_SIZE);
-    const int ray_id = tid >> 5;
-    const int ray_blk_id = threadIdx.x >> 5;
-    const int lane_id = threadIdx.x & 0x1F;
+    const int ray_id = tid >> 5; // a group of 32 threads (one warp)
+    const int ray_blk_id = threadIdx.x >> 5; //block을 warp단위로
+    const int lane_id = threadIdx.x & 0x1F; // exact thread's index within its warp
 
     if (lane_id >= grid.sh_data_dim)  // Bad, but currently the best way due to coalesced memory access
         return;
 
     __shared__ float sphfunc_val[TRACE_RAY_CUDA_RAYS_PER_BLOCK][9];
-    __shared__ SingleRaySpec ray_spec[TRACE_RAY_CUDA_RAYS_PER_BLOCK];
-    __shared__ typename WarpReducef::TempStorage temp_storage[
-        TRACE_RAY_CUDA_RAYS_PER_BLOCK];
-    ray_spec[ray_blk_id].set(rays.origins[ray_id].data(),
-            rays.dirs[ray_id].data());
+    __shared__ SingleRaySpec ray_spec[TRACE_RAY_CUDA_RAYS_PER_BLOCK]; //SingleRaySpec : origin dir를 가진 struct
+    //typedef cub::WarpReduce<float> WarpReducef; 
+    // allows threads within the same warp (32 threads in CUDA) to perform reduction operations on data efficiently. 
+    __shared__ typename WarpReducef::TempStorage temp_storage[TRACE_RAY_CUDA_RAYS_PER_BLOCK];
+    ray_spec[ray_blk_id].set(rays.origins[ray_id].data(), rays.dirs[ray_id].data());
+    
     calc_sphfunc(grid, lane_id,
                  ray_id,
                  ray_spec[ray_blk_id].dir,
-                 sphfunc_val[ray_blk_id]);
-    ray_find_bounds(ray_spec[ray_blk_id], grid, opt, ray_id);
+                 sphfunc_val[ray_blk_id]); // sh값 calculate
+                 
+    ray_find_bounds(ray_spec[ray_blk_id], grid, opt, ray_id); 
     __syncwarp((1U << grid.sh_data_dim) - 1);
 
     trace_ray_cuvol(

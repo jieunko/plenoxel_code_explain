@@ -8,7 +8,8 @@
 namespace {
 namespace device {
 
-struct PackedSparseGridSpec {
+struct PackedSparseGridSpec 
+{
     PackedSparseGridSpec(SparseGridSpec& spec)
         :
           density_data(spec.density_data.data_ptr<float>()),
@@ -22,9 +23,11 @@ struct PackedSparseGridSpec {
           background_data(spec.background_data.defined() ?
                           spec.background_data.data_ptr<float>() :
                           nullptr),
-          size{(int)spec.links.size(0),
+          size{
+            (int)spec.links.size(0),
                (int)spec.links.size(1),
-               (int)spec.links.size(2)},
+               (int)spec.links.size(2)
+            },
           stride_x{(int)spec.links.stride(0)},
           background_reso{
               spec.background_links.defined() ? (int)spec.background_links.size(1) : 0,
@@ -113,8 +116,9 @@ struct SingleRaySpec {
     __device__ SingleRaySpec(const float* __restrict__ origin, const float* __restrict__ dir)
         : origin{origin[0], origin[1], origin[2]},
           dir{dir[0], dir[1], dir[2]} {}
-    __device__ void set(const float* __restrict__ origin, const float* __restrict__ dir) {
-#pragma unroll 3
+    __device__ void set(const float* __restrict__ origin, const float* __restrict__ dir) 
+    {
+    #pragma unroll 3
         for (int i = 0; i < 3; ++i) {
             this->origin[i] = origin[i];
             this->dir[i] = dir[i];

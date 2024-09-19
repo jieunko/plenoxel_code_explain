@@ -585,11 +585,12 @@ __device__ __inline__ void ray_find_bounds(
         const RenderOptions& __restrict__ opt,
         uint32_t ray_id) {
     // Warning: modifies ray.origin
-    transform_coord(ray.origin, grid._scaling, grid._offset);
+    transform_coord(ray.origin, grid._scaling, grid._offset); //ray.origin * _scaling + _offset
     // Warning: modifies ray.dir
-    ray.world_step = _get_delta_scale(grid._scaling, ray.dir) * opt.step_size;
+    ray.world_step = _get_delta_scale(grid._scaling, ray.dir) * opt.step_size; //dir에 대한 scale
 
-    if (opt.use_spheric_clip) {
+    if (opt.use_spheric_clip) 
+    {
         // Horrible hack
         const float sphere_scaling[3] {
             2.f / float(grid.size[0]),
@@ -609,12 +610,22 @@ __device__ __inline__ void ray_find_bounds(
             ray.tmin = 1e-9f;
             ray.tmax = 0.f;
         }
-    } else {
+    } 
+    else 
+    { //erforming calculations to determine 
+    //the minimum and maximum intersection distances (tmin and tmax) for a ray in a 3D space, 
         ray.tmin = opt.near_clip / ray.world_step * opt.step_size;
         ray.tmax = 2e3f;
         for (int i = 0; i < 3; ++i) {
-            const float invdir = 1.0 / ray.dir[i];
-            const float t1 = (-0.5f - ray.origin[i]) * invdir;
+            const float invdir = 1.0 / ray.dir[i]; //used to avoid division by zero when checking
+                                                   //intersections, and it's necessary 
+                                                   // for calculating the intersection points.
+            //t1 and t2 represent potential "intersection distances" 
+            //with the near and far planes
+            //minimum corner (-0.5, -0.5, -0.5)
+            //maximum corner (10−0.5,10−0.5,10−0.5)=(9.5,9.5,9.5) //10 = grid size
+            const float t1 = (-0.5f - ray.origin[i]) * invdir; //calculates the distance along the ray's direction 
+                                                                //to the near plane of the bounding box.
             const float t2 = (grid.size[i] - 0.5f  - ray.origin[i]) * invdir;
             if (ray.dir[i] != 0.f) {
                 ray.tmin = max(ray.tmin, min(t1, t2));

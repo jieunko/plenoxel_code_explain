@@ -1110,7 +1110,7 @@ class SparseGrid(nn.Module):
         self.sparse_grad_indexer = torch.zeros((self.density_data.size(0),),
                 dtype=torch.bool, device=self.density_data.device)
 
-        grad_holder = _C.GridOutputGrads()
+        grad_holder = _C.GridOutputGrads() #structure of gradient density, sh, basis, background, mask 
         grad_holder.grad_density_out = grad_density
         grad_holder.grad_sh_out = grad_sh
         if self.basis_type != BASIS_TYPE_SH:
@@ -2136,7 +2136,7 @@ class SparseGrid(nn.Module):
         """
         Generate object to pass to C++
         """
-        gspec = _C.SparseGridSpec()
+        gspec = _C.SparseGridSpec() #grid struct type
         gspec.density_data = self.density_data
         gspec.sh_data = self.sh_data
         gspec.links = self.links

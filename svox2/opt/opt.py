@@ -372,7 +372,7 @@ while True:
     epoch_size = dset.rays.origins.size(0)
     batches_per_epoch = (epoch_size-1)//args.batch_size+1
     # Test
-    def eval_step():
+    def eval_step(): #eval
         # Put in a function to avoid memory leak
         print('Eval step')
         with torch.no_grad():
@@ -403,7 +403,9 @@ while True:
                                    width=dset_test.get_image_size(img_id)[1],
                                    height=dset_test.get_image_size(img_id)[0],
                                    ndc_coeffs=dset_test.ndc_coeffs)
-                rgb_pred_test = grid.volume_render_image(cam, use_kernel=True)
+                #여기서 volume rendering!!
+                #이거 안에서 volume_render_cuvol_image call
+                rgb_pred_test = grid.volume_render_image(cam, use_kernel=True) #volume render
                 rgb_gt_test = dset_test.gt[img_id].to(device=device)
                 all_mses = ((rgb_gt_test - rgb_pred_test) ** 2).cpu()
                 if i % img_save_interval == 0:
@@ -496,7 +498,7 @@ while True:
             rays = svox2.Rays(batch_origins, batch_dirs)
 
             #  with Timing("volrend_fused"):
-            rgb_pred = grid.volume_render_fused(rays, rgb_gt,
+            rgb_pred = grid.volume_render_fused(rays, rgb_gt, #dataset에서 읽어온 rgb image
                     beta_loss=args.lambda_beta,
                     sparsity_loss=args.lambda_sparsity,
                     randomize=args.enable_random)
