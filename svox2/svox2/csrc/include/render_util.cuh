@@ -373,7 +373,8 @@ __device__ __inline__ void calc_sphfunc(
     const float* __restrict__ dir, // Pre-normalized
     float* __restrict__ out) {
     // Placeholder
-    if (grid.basis_type == BASIS_TYPE_3D_TEXTURE) {
+    if (grid.basis_type == BASIS_TYPE_3D_TEXTURE) 
+    {
         float p[3];
         int32_t l[3];
         for (int j = 0; j < 3; ++j) {
@@ -402,7 +403,7 @@ __device__ __inline__ void calc_sphfunc(
             out[lane_id] = _SIGMOID(basis_ptr[lane_id]);
         }
     } else {
-        calc_sh(grid.basis_dim, dir, out);
+        calc_sh(grid.basis_dim, dir, out); //결국 이거임
     }
 }
 

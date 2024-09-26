@@ -468,12 +468,14 @@ while True:
                         stats_test[stat_name], global_step=gstep_id_base)
             summary_writer.add_scalar('epoch_id', float(epoch_id), global_step=gstep_id_base)
             print('eval stats:', stats_test)
+    
+    #여기 eval 조건 특정 epoch 마다 eval 1번
     if epoch_id % max(factor, args.eval_every) == 0: #and (epoch_id > 0 or not args.tune_mode):
         # NOTE: we do an eval sanity check, if not in tune_mode
         eval_step()
         gc.collect()
 
-    def train_step():
+    def train_step():#여기에서는 ray tracing만 하는데?
         print('Train step')
         pbar = tqdm(enumerate(range(0, epoch_size, args.batch_size)), total=batches_per_epoch)
         stats = {"mse" : 0.0, "psnr" : 0.0, "invsqr_mse" : 0.0}
@@ -630,6 +632,8 @@ while True:
             reso_id += 1
             use_sparsify = True
             z_reso = reso_list[reso_id] if isinstance(reso_list[reso_id], int) else reso_list[reso_id][2]
+            
+            #여기에서 grid계산 들어가려나
             grid.resample(reso=reso_list[reso_id],
                     sigma_thresh=args.density_thresh,
                     weight_thresh=args.weight_thresh / z_reso if use_sparsify else 0.0,
