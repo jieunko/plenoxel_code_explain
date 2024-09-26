@@ -300,17 +300,16 @@ __global__ void render_ray_kernel(
         RenderOptions opt,
         torch::PackedTensorAccessor32<float, 2, torch::RestrictPtrTraits> out) {
     CUDA_GET_THREAD_ID(tid, int(rays.origins.size(0)) * WARP_SIZE);
-    const int ray_id = tid >> 5;
-    const int ray_blk_id = threadIdx.x >> 5;
-    const int lane_id = threadIdx.x & 0x1F;
+    const int ray_id = tid >> 5; //32
+    const int ray_blk_id = threadIdx.x >> 5; //32
+    const int lane_id = threadIdx.x & 0x1F;//0 ~31 block 내에서 접근 
 
     if (lane_id >= grid.sh_data_dim)
         return;
 
-    __shared__ float sphfunc_val[TRACE_RAY_CUDA_RAYS_PER_BLOCK][10];
+    __shared__ float sphfunc_val[TRACE_RAY_CUDA_RAYS_PER_BLOCK][10]; //block 단위로 하니까 빨라져~ shared 쓰면
     __shared__ SingleRaySpec ray_spec[TRACE_RAY_CUDA_RAYS_PER_BLOCK];
-    __shared__ typename WarpReducef::TempStorage temp_storage[
-        TRACE_RAY_CUDA_RAYS_PER_BLOCK];
+    __shared__ typename WarpReducef::TempStorage temp_storage[TRACE_RAY_CUDA_RAYS_PER_BLOCK];
     ray_spec[ray_blk_id].set(rays.origins[ray_id].data(),
             rays.dirs[ray_id].data());
     calc_sphfunc(grid, lane_id,
@@ -351,8 +350,8 @@ __global__ void render_ray_backward_kernel(
     __shared__ float sphfunc_val[TRACE_RAY_BKWD_CUDA_RAYS_PER_BLOCK][10];
     __shared__ float grad_sphfunc_val[TRACE_RAY_CUDA_RAYS_PER_BLOCK][10];
     __shared__ SingleRaySpec ray_spec[TRACE_RAY_BKWD_CUDA_RAYS_PER_BLOCK];
-    __shared__ typename WarpReducef::TempStorage temp_storage[
-        TRACE_RAY_CUDA_RAYS_PER_BLOCK];
+    __shared__ typename WarpReducef::TempStorage temp_storage[TRACE_RAY_CUDA_RAYS_PER_BLOCK];
+    
     ray_spec[ray_blk_id].set(rays.origins[ray_id].data(),
                              rays.dirs[ray_id].data());
     const float vdir[3] = {ray_spec[ray_blk_id].dir[0],

@@ -645,22 +645,22 @@ __global__ void render_ray_kernel(
     __shared__ typename WarpReducef::TempStorage temp_storage[TRACE_RAY_CUDA_RAYS_PER_BLOCK];
     ray_spec[ray_blk_id].set(rays.origins[ray_id].data(), rays.dirs[ray_id].data());
     
-    calc_sphfunc(grid, lane_id,
+    calc_sphfunc(grid, lane_id, 
                  ray_id,
                  ray_spec[ray_blk_id].dir,
                  sphfunc_val[ray_blk_id]); // sh값 calculate
                  
-    ray_find_bounds(ray_spec[ray_blk_id], grid, opt, ray_id); 
+    ray_find_bounds(ray_spec[ray_blk_id], grid, opt, ray_id);  //ray_spec이 output
     __syncwarp((1U << grid.sh_data_dim) - 1);
 
     trace_ray_cuvol(
         grid,
-        ray_spec[ray_blk_id],
+        ray_spec[ray_blk_id], //block 단위로 지금 넘기고 있는거야 데이터를
         opt,
         lane_id,
         sphfunc_val[ray_blk_id],
         temp_storage[ray_blk_id],
-        out[ray_id].data(),
+        out[ray_id].data(), //이게 최종 out이긴 한데 어차피 지금 함수 return void
         log_transmit_out == nullptr ? nullptr : log_transmit_out + ray_id);
 }
 
@@ -1085,7 +1085,7 @@ void volume_render_cuvol_backward(
 }
 
 void volume_render_cuvol_fused(
-        SparseGridSpec& grid,
+        SparseGridSpec& grid, //gspec = _C.SparseGridSpec()
         RaysSpec& rays,
         RenderOptions& opt,
         torch::Tensor rgb_gt,

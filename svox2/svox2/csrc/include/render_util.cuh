@@ -242,7 +242,7 @@ __device__ __inline__ float compute_skip_dist(
         int offx, int offy,
         int pos_offset = 0) {
     const int32_t link_val = links[offx * (ray.l[0] + pos_offset) +
-                                   offy * (ray.l[1] + pos_offset) +
+                                   offy * (ray.l[1] + pos_offset) + //voxel 조회
                                    (ray.l[2] + pos_offset)];
     if (link_val >= -1) return 0.f; // Not worth
 
@@ -403,6 +403,7 @@ __device__ __inline__ void calc_sphfunc(
             out[lane_id] = _SIGMOID(basis_ptr[lane_id]);
         }
     } else {
+        //SH/learned basis dimensions sh_dim 값 basis_dim으로 가져왔어
         calc_sh(grid.basis_dim, dir, out); //결국 이거임
     }
 }

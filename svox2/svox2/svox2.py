@@ -415,7 +415,7 @@ class SparseGrid(nn.Module):
         if use_z_order:
             init_links = utils.gen_morton(reso[0], device=device, dtype=torch.int32).flatten()
         else:
-            init_links = torch.arange(n3, device=device, dtype=torch.int32)
+            init_links = torch.arange(n3, device=device, dtype=torch.int32) #init_link는 0로 시작
 
         if use_sphere_bound:
             X = torch.arange(reso[0], dtype=torch.float32, device=device) - 0.5
