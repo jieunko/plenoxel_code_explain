@@ -665,7 +665,7 @@ __global__ void render_ray_kernel(
 }
 
 __launch_bounds__(TRACE_RAY_CUDA_THREADS, MIN_BLOCKS_PER_SM)
-__global__ void render_ray_image_kernel(
+__global__ void render_ray_image_kernel( //ray tracing
         PackedSparseGridSpec grid,
         PackedCameraSpec cam,
         RenderOptions opt,
