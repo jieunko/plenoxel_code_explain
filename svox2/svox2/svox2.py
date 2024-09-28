@@ -350,13 +350,14 @@ class SparseGrid(nn.Module):
                                  given size on MLP; if 0 then does not use positional encoding
     :param mlp_width: int, if using BASIS_TYPE_MLP, specifies MLP width (hidden dimension)
     :param device: torch.device, device to store the grid
+    :grid값은 device에 있음
     """
 
     def __init__(
         self,
         reso: Union[int, List[int], Tuple[int, int, int]] = 128,
-        radius: Union[float, List[float]] = 1.0,
-        center: Union[float, List[float]] = [0.0, 0.0, 0.0],
+        radius: Union[float, List[float]] = 1.0, #기본 크기 1.0
+        center: Union[float, List[float]] = [0.0, 0.0, 0.0], #그리드 센터
         basis_type: int = BASIS_TYPE_SH,
         basis_dim: int = 9,  # SH/learned basis size; in SH case, square number
         basis_reso: int = 16,  # Learned basis resolution (x^3 embedding grid)
@@ -416,7 +417,7 @@ class SparseGrid(nn.Module):
             init_links = utils.gen_morton(reso[0], device=device, dtype=torch.int32).flatten()
         else:
             init_links = torch.arange(n3, device=device, dtype=torch.int32) #init_link는 0로 시작
-
+                        #generates a 1D tensor containing a sequence of integers from 0 to n3 - 1.
         if use_sphere_bound:
             X = torch.arange(reso[0], dtype=torch.float32, device=device) - 0.5
             Y = torch.arange(reso[1], dtype=torch.float32, device=device) - 0.5
@@ -448,6 +449,7 @@ class SparseGrid(nn.Module):
 
         self.density_data = nn.Parameter(
             torch.zeros(self.capacity, 1, dtype=torch.float32, device=device)
+            #density 0로 쭉 1d array
         )
         # Called sh for legacy reasons, but it's just the coeffients for whatever
         # spherical basis functions
@@ -455,7 +457,7 @@ class SparseGrid(nn.Module):
             torch.zeros(
                 self.capacity, self.basis_dim * 3, dtype=torch.float32, device=device
             )
-        )
+        ) #각 복셀 별 sh data
 
         if self.basis_type == BASIS_TYPE_3D_TEXTURE:
             # Unit sphere embedded in a cube
@@ -520,7 +522,9 @@ class SparseGrid(nn.Module):
                 requires_grad=False
             )
 
-        self.register_buffer("links", init_links.view(reso))
+        self.register_buffer("links", init_links.view(reso)) #registers a tensor as a persistent buffer in the module.
+        #init_links.view(reso) : reso size로 shape바꿈
+        #accessible as self.links after registration
         self.links: torch.Tensor
         self.opt = RenderOptions()
         self.sparse_grad_indexer: Optional[torch.Tensor] = None

@@ -254,7 +254,7 @@ assert args.lr_basis_final <= args.lr_basis, "lr_basis must be >= lr_basis_final
 os.makedirs(args.train_dir, exist_ok=True)
 summary_writer = SummaryWriter(args.train_dir)
 
-reso_list = json.loads(args.reso)
+reso_list = json.loads(args.reso) #말 그대로 크기만 있는거 같은데
 reso_id = 0
 
 with open(path.join(args.train_dir, 'args.json'), 'w') as f:
@@ -501,7 +501,7 @@ while True:
 
             #  with Timing("volrend_fused"):
             rgb_pred = grid.volume_render_fused(rays, rgb_gt, #dataset에서 읽어온 rgb image
-                    beta_loss=args.lambda_beta,
+                    beta_loss=args.lambda_beta,               #ray tracing
                     sparsity_loss=args.lambda_sparsity,
                     randomize=args.enable_random)
 
