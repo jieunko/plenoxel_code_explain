@@ -405,7 +405,7 @@ while True:
                                    ndc_coeffs=dset_test.ndc_coeffs)
                 #여기서 volume rendering!!
                 #이거 안에서 volume_render_cuvol_image call
-                rgb_pred_test = grid.volume_render_image(cam, use_kernel=True) #volume render
+                rgb_pred_test = grid.volume_render_image(cam, use_kernel=True) #volume render, output reg_pred_test(predicted image)
                 rgb_gt_test = dset_test.gt[img_id].to(device=device)
                 all_mses = ((rgb_gt_test - rgb_pred_test) ** 2).cpu()
                 if i % img_save_interval == 0:
@@ -558,7 +558,7 @@ while True:
             # Apply TV/Sparsity regularizers
             if args.lambda_tv > 0.0:
                 #  with Timing("tv_inpl"):
-                grid.inplace_tv_grad(grid.density_data.grad,
+                grid.inplace_tv_grad(grid.density_data.grad,#여기가 output
                         scaling=args.lambda_tv,
                         sparse_frac=args.tv_sparsity,
                         logalpha=args.tv_logalpha,
@@ -566,7 +566,7 @@ while True:
                         contiguous=args.tv_contiguous)
             if args.lambda_tv_sh > 0.0:
                 #  with Timing("tv_color_inpl"):
-                grid.inplace_tv_color_grad(grid.sh_data.grad,
+                grid.inplace_tv_color_grad(grid.sh_data.grad,#sh의 grad output
                         scaling=args.lambda_tv_sh,
                         sparse_frac=args.tv_sh_sparsity,
                         ndc_coeffs=dset.ndc_coeffs,

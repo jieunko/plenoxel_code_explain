@@ -109,9 +109,9 @@ __global__ void tv_kernel(
 }
 
 __launch_bounds__(TV_GRAD_CUDA_THREADS, MIN_BLOCKS_PER_SM)
-__global__ void tv_grad_kernel(
+__global__ void tv_grad_kernel( //designed to compute the gradient of a tensor based on a 3D link structure and an input data tensor.
         const torch::PackedTensorAccessor32<int32_t, 3, torch::RestrictPtrTraits> links,
-        const torch::PackedTensorAccessor64<float, 2, torch::RestrictPtrTraits> data,
+        const torch::PackedTensorAccessor64<float, 2, torch::RestrictPtrTraits> data, //density data
         int start_dim, int end_dim,
         float scale,
         size_t Q,
@@ -119,28 +119,33 @@ __global__ void tv_grad_kernel(
         float ndc_coeffx, float ndc_coeffy,
         // Output
         float* __restrict__ grad_data) {
-    CUDA_GET_THREAD_ID_U64(tid, Q);
+    CUDA_GET_THREAD_ID_U64(tid, Q); //retrieves a unique thread ID (tid) based on the total number of elements Q
     float dummy;
-    const int idx = tid % (end_dim - start_dim) + start_dim;
-    const int xyz = tid / (end_dim - start_dim);
+    const int idx = tid % (end_dim - start_dim) + start_dim; //voxel 시작 인덱스
+    const int xyz = tid / (end_dim - start_dim); //voxel dim만큼 나눠서..
+
+    // individual x, y, z coordinates based on xyz, effectively translating the 1D tid into 3D coordinates
     const int z = xyz % (links.size(2) - 1);
     const int xy = xyz / (links.size(2) - 1);
     const int y = xy % (links.size(1) - 1);
     const int x = xy / (links.size(1) - 1);
 
-    if (ignore_edge && links[x][y][z] == 0) return;
+    if (ignore_edge && links[x][y][z] == 0) return; //edge ignore일경우
 
     float scaling[3];
-    CALCULATE_RAY_SCALE(scaling, links.size(0), links.size(1), links.size(2));
+    //calculates the scaling factors for the gradient components based on the size of the links tensor.
+    CALCULATE_RAY_SCALE(scaling, links.size(0), links.size(1), links.size(2)); //scaling이 output
 
-    const float* dptr = data.data();
-    const size_t ddim = data.size(1);
+    const float* dptr = data.data(); // Pointer to the raw data of the data tensor
+    const size_t ddim = data.size(1); //second dimension size of the data tensor.
     float v000 = 0.f, v100 = 0.f, v010 = 0.f, v001 = 0.f;
     float* gptr000 = &dummy,
          * gptr100 = &dummy,
          * gptr010 = &dummy,
          * gptr001 = &dummy;
 
+    //checks if the links exist for the current voxel and its neighbors. If they do, it updates the pointers 
+    //gptr000, gptr100, gptr010, and gptr001 to point to the corresponding locations in the grad_data array
     if (links[x][y][z] >= 0) {
         const size_t lnk = links[x][y][z] * ddim + idx;
         v000 = dptr[lnk];
@@ -516,15 +521,16 @@ torch::Tensor tv(torch::Tensor links, torch::Tensor data,
 }
 
 void tv_grad(torch::Tensor links,
-             torch::Tensor data,
-             int start_dim, int end_dim,
+             torch::Tensor data,//density.data
+             int start_dim, int end_dim, //0, 1
              float scale,
              bool use_logalpha,
              float logalpha_delta,
              bool ignore_edge,
              float ndc_coeffx,
              float ndc_coeffy,
-             torch::Tensor grad_data) {
+             torch::Tensor grad_data) //output grad
+    {
     DEVICE_GUARD(data);
     CHECK_INPUT(data);
     CHECK_INPUT(links);

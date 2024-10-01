@@ -1163,7 +1163,7 @@ class SparseGrid(nn.Module):
         if self.basis_type != BASIS_TYPE_MLP and imrend_fn_name in _C.__dict__ and not torch.is_grad_enabled() and not return_raylen:
             # Use the fast image render kernel if available
             cu_fn = _C.__dict__[imrend_fn_name]
-            return cu_fn(
+            return cu_fn( # result가 predicted image
                 self._to_cpp(),
                 camera._to_cpp(),
                 self.opt._to_cpp()
@@ -1270,7 +1270,7 @@ class SparseGrid(nn.Module):
             self.capacity: int = reduce(lambda x, y: x * y, reso)
             curr_reso = self.links.shape
             dtype = torch.float32
-            reso_facts = [0.5 * curr_reso[i] / reso[i] for i in range(3)]
+            reso_facts = [0.5 * curr_reso[i] / reso[i] for i in range(3)] #linspace쓰기위해 얼마나 space되야하는지
             X = torch.linspace(
                 reso_facts[0] - 0.5,
                 curr_reso[0] - reso_facts[0] - 0.5,
@@ -1303,7 +1303,7 @@ class SparseGrid(nn.Module):
             all_sample_vals_density = []
             print('Pass 1/2 (density)')
             for i in tqdm(range(0, len(points), batch_size)):
-                sample_vals_density, _ = self.sample(
+                sample_vals_density, _ = self.sample( #여기 sample
                     points[i : i + batch_size],
                     grid_coords=True,
                     want_colors=False
@@ -1388,7 +1388,7 @@ class SparseGrid(nn.Module):
             print('Pass 2/2 (color), eval', cnz, 'sparse pts')
             all_sample_vals_sh = []
             for i in tqdm(range(0, len(points), batch_size)):
-                _, sample_vals_sh = self.sample(
+                _, sample_vals_sh = self.sample( # 왜 sample 2번 콜??
                     points[i : i + batch_size],
                     grid_coords=True,
                     want_colors=True
@@ -1766,6 +1766,7 @@ class SparseGrid(nn.Module):
                     logalpha, logalpha_delta,
                     False,
                     ndc_coeffs[0], ndc_coeffs[1],
+                    #output
                     grad)
             self.sparse_grad_indexer : Optional[torch.Tensor] = None
 

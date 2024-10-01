@@ -143,7 +143,8 @@ __global__ void accel_dist_set_kernel(
 __launch_bounds__(MISC_CUDA_THREADS, MISC_MIN_BLOCKS_PER_SM)
 __global__ void accel_dist_prop_kernel(
         torch::PackedTensorAccessor32<int32_t, 3, torch::RestrictPtrTraits> grid,
-        const bool* __restrict__ tmp) {
+        const bool* __restrict__ tmp) 
+{
     int sz_x = grid.size(0);
     int sz_y = grid.size(1);
     int sz_z = grid.size(2);
@@ -154,7 +155,7 @@ __global__ void accel_dist_prop_kernel(
     int y = xy % grid.size(1);
     int x = xy / grid.size(1);
     const bool* tmp_base = tmp;
-    int32_t* __restrict__ val = &grid[x][y][z];
+    int32_t* __restrict__ val = &grid[x][y][z]; // val이 grid point야
 
     if (*val < 0) {
         int result = -1;

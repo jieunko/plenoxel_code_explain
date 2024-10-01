@@ -34,7 +34,7 @@ __device__ __inline__ void trace_ray_cuvol(
         uint32_t lane_id,
         float* __restrict__ sphfunc_val,
         WarpReducef::TempStorage& __restrict__ temp_storage,
-        float* __restrict__ out,
+        float* __restrict__ out, //pred_image가 result
         float* __restrict__ out_log_transmit) {
 
     const uint32_t lane_colorgrp_id = lane_id % grid.basis_dim; //Determines the thread's index within its color group
@@ -51,7 +51,7 @@ __device__ __inline__ void trace_ray_cuvol(
     }
 
     float t = ray.tmin; //Start with the ray's minimum t-value
-    float outv = 0.f;
+    float outv = 0.f; // 초반 color 0
 
     float log_transmit = 0.f;
     // printf("tmin %f, tmax %f \n", ray.tmin, ray.tmax);
@@ -59,7 +59,7 @@ __device__ __inline__ void trace_ray_cuvol(
     while (t <= ray.tmax) //Loop through the ray's path
     {
 #pragma unroll 3 //Suggests the compiler unroll the loop for efficiency
-        for (int j = 0; j < 3; ++j) {
+        for (int j = 0; j < 3; ++j) { //x , y, z로 각기 계산
             //Calculate the ray’s position in grid coordinates.
             ray.pos[j] = fmaf(t, ray.dir[j], ray.origin[j]); //result=(a×b)+c
             ray.pos[j] = min(max(ray.pos[j], 0.f), grid.size[j] - 1.f);
@@ -108,7 +108,7 @@ __device__ __inline__ void trace_ray_cuvol(
             log_transmit -= pcnt;                                    //Subtract pcnt from log_transmit.    
 
 
-            float lane_color_total = WarpReducef(temp_storage).HeadSegmentedSum( /
+            float lane_color_total = WarpReducef(temp_storage).HeadSegmentedSum( 
                                            lane_color, lane_colorgrp_id == 0);
 
             //Add the weighted color contribution to outv                               
@@ -121,7 +121,7 @@ __device__ __inline__ void trace_ray_cuvol(
             }
         }
         t += opt.step_size; //Advance the ray position
-    }
+    } //ray tracing loop 끝
 
     if (grid.background_nlayers == 0) { //Add background contribution
         outv += _EXP(log_transmit) * opt.background_brightness;
@@ -648,6 +648,7 @@ __global__ void render_ray_kernel(
     calc_sphfunc(grid, lane_id, 
                  ray_id,
                  ray_spec[ray_blk_id].dir,
+                 //out
                  sphfunc_val[ray_blk_id]); // sh값 calculate
                  
     ray_find_bounds(ray_spec[ray_blk_id], grid, opt, ray_id);  //ray_spec이 output
@@ -702,7 +703,7 @@ __global__ void render_ray_image_kernel( //ray tracing
         lane_id,
         sphfunc_val[ray_blk_id],
         temp_storage[ray_blk_id],
-        out + ray_id * 3,
+        out + ray_id * 3, //이게 output
         log_transmit_out == nullptr ? nullptr : log_transmit_out + ray_id);
 }
 
@@ -1000,7 +1001,7 @@ torch::Tensor volume_render_cuvol_image(SparseGridSpec& grid, CameraSpec& cam, R
     {
         const int cuda_n_threads = TRACE_RAY_CUDA_THREADS;
         const int blocks = CUDA_N_BLOCKS_NEEDED(Q * WARP_SIZE, cuda_n_threads);
-        device::render_ray_image_kernel<<<blocks, cuda_n_threads>>>(
+        device::render_ray_image_kernel<<<blocks, cuda_n_threads>>>( //background빼면 이거만 있어.
                 grid,
                 cam,
                 opt,
@@ -1084,15 +1085,16 @@ void volume_render_cuvol_backward(
     CUDA_CHECK_ERRORS;
 }
 
-void volume_render_cuvol_fused(
+void volume_render_cuvol_fused( // train step에서 rendering
         SparseGridSpec& grid, //gspec = _C.SparseGridSpec()
         RaysSpec& rays,
         RenderOptions& opt,
         torch::Tensor rgb_gt,
         float beta_loss,
         float sparsity_loss,
-        torch::Tensor rgb_out,
-        GridOutputGrads& grads) {
+        torch::Tensor rgb_out, //output
+        GridOutputGrads& grads) //output
+    {
 
     DEVICE_GUARD(grid.sh_data);
     CHECK_INPUT(rgb_gt);
