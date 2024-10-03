@@ -158,23 +158,32 @@ class Camera:
         """
         Generate the rays for this camera
         :return: (origins (H*W, 3), dirs (H*W, 3))
+        enerate the origins and directions of rays 
+        based on the camera's parameters
         """
         origins = self.c2w[None, :3, 3].expand(self.height * self.width, -1).contiguous()
+        #c2w : cam to world transformation
+        #expand method creates a tensor where the camera's position is 
+        #replicated for every pixel (height * width).
         yy, xx = torch.meshgrid(
             torch.arange(self.height, dtype=torch.float64, device=self.c2w.device) + 0.5,
             torch.arange(self.width, dtype=torch.float64, device=self.c2w.device) + 0.5,
-        )
+        ) #grid of pixel coordinates. 
         xx = (xx - self.cx_val) / self.fx_val
         yy = (yy - self.cy_val) / self.fy_val
         zz = torch.ones_like(xx)
+        #adjust the pixel coordinates based on the 
+        #camera's intrinsic parameters
         dirs = torch.stack((xx, yy, zz), dim=-1)   # OpenCV
+        #3D direction vector for each pixel
         del xx, yy, zz
-        dirs /= torch.norm(dirs, dim=-1, keepdim=True)
+        dirs /= torch.norm(dirs, dim=-1, keepdim=True) #normalize
         dirs = dirs.reshape(-1, 3, 1)
-        dirs = (self.c2w[None, :3, :3].double() @ dirs)[..., 0]
+        dirs = (self.c2w[None, :3, :3].double() @ dirs)[..., 0] 
+        #[:3, :3] extracts the top-left 3x3 portion of the matrix,
         dirs = dirs.reshape(-1, 3).float()
-
-        if self.ndc_coeffs[0] > 0.0:
+        #transform the direction vectors from camera space to world space
+        if self.ndc_coeffs[0] > 0.0: #origins and directions are converted to NDC space
             origins, dirs = utils.convert_to_ndc(
                     origins,
                     dirs,
@@ -1103,6 +1112,7 @@ class SparseGrid(nn.Module):
             _C is not None and self.sh_data.is_cuda
         ), "CUDA extension is currently required for fused"
         assert rays.is_cuda
+        #각 data에서 gradient 만 빼옴
         grad_density, grad_sh, grad_basis, grad_bg = self._get_data_grads()
         rgb_out = torch.zeros_like(rgb_gt)
         basis_data : Optional[torch.Tensor] = None
@@ -1129,8 +1139,8 @@ class SparseGrid(nn.Module):
         cu_fn = _C.__dict__[f"volume_render_{self.opt.backend}_fused"]
         #  with utils.Timing("actual_render"):
         cu_fn(
-            self._to_cpp(replace_basis_data=basis_data),
-            rays._to_cpp(),
+            self._to_cpp(replace_basis_data=basis_data), #grid data가 들어가야
+            rays._to_cpp(), # 여기 rays
             self.opt._to_cpp(randomize=randomize),
             rgb_gt,
             beta_loss,
@@ -2137,6 +2147,7 @@ class SparseGrid(nn.Module):
         reso = self.links.shape
         return reso[0] == reso[1] and reso[0] == reso[2] and utils.is_pow2(reso[0])
 
+    #CUDA에 pass할 dataset
     def _to_cpp(self, grid_coords: bool = False, replace_basis_data: Optional[torch.Tensor] = None):
         """
         Generate object to pass to C++
@@ -2170,6 +2181,7 @@ class SparseGrid(nn.Module):
 
     def _get_data_grads(self):
         ret = []
+        #iterates over a predefined list of subitem names to retrieve their gradients
         for subitem in ["density_data", "sh_data", "basis_data", "background_data"]:
             param = self.__getattr__(subitem)
             if not param.requires_grad:

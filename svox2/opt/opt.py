@@ -328,7 +328,7 @@ elif grid.basis_type == svox2.BASIS_TYPE_MLP:
                 )
 
 
-grid.requires_grad_(True)
+grid.requires_grad_(True) # enables gradient tracking
 config_util.setup_render_opts(grid.opt, args)
 print('Render options', grid.opt)
 

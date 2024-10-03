@@ -1117,6 +1117,7 @@ void volume_render_cuvol_fused( // train step에서 rendering
 
     {
         const int blocks = CUDA_N_BLOCKS_NEEDED(Q * WARP_SIZE, TRACE_RAY_CUDA_THREADS);
+        //ray trace
         device::render_ray_kernel<<<blocks, TRACE_RAY_CUDA_THREADS>>>(
                 grid, rays, opt,
                 // Output
@@ -1136,6 +1137,7 @@ void volume_render_cuvol_fused( // train step에서 rendering
 
     {
         const int blocks = CUDA_N_BLOCKS_NEEDED(Q * WARP_SIZE, TRACE_RAY_BKWD_CUDA_THREADS);
+        //ray backward
         device::render_ray_backward_kernel<<<blocks, TRACE_RAY_BKWD_CUDA_THREADS>>>(
                 grid,
                 rgb_gt.data_ptr<float>(),
