@@ -1264,7 +1264,7 @@ class SparseGrid(nn.Module):
         :param max_elements: int, if nonzero, an upper bound on the number of elements in the
                 upsampled grid; we will adjust the threshold to match it
         """
-        with torch.no_grad():
+        with torch.no_grad(): #Disables gradient tracking for performance
             device = self.links.device
             if isinstance(reso, int):
                 reso = [reso] * 3
@@ -1277,6 +1277,7 @@ class SparseGrid(nn.Module):
                 print("Morton code requires a cube grid of power-of-2 size, ignoring...")
                 use_z_order = False
 
+            #: Computes the total number of elements in the grid
             self.capacity: int = reduce(lambda x, y: x * y, reso)
             curr_reso = self.links.shape
             dtype = torch.float32
@@ -1309,11 +1310,15 @@ class SparseGrid(nn.Module):
 
             use_weight_thresh = cameras is not None
 
-            batch_size = 720720
+            batch_size = 720720 # Sets a batch size for sampling
             all_sample_vals_density = []
             print('Pass 1/2 (density)')
-            for i in tqdm(range(0, len(points), batch_size)):
-                sample_vals_density, _ = self.sample( #여기 sample
+             #Iterates through all points in batches, 
+             #calling a sample method to retrieve density values for each batch.
+            for i in tqdm(range(0, len(points), batch_size)): 
+                #Grid sampling with trilinear interpolation.
+                sample_vals_density, _ = 
+                self.sample( #여기 sample, return density and color
                     points[i : i + batch_size],
                     grid_coords=True,
                     want_colors=False
@@ -1327,9 +1332,11 @@ class SparseGrid(nn.Module):
             self.density_rms = None
             self.sh_rms = None
 
-            sample_vals_density = torch.cat(
+            sample_vals_density = torch.cat(  #각 voxel당 density
                     all_sample_vals_density, dim=0).view(reso)
             del all_sample_vals_density
+            #Prepares for weight rendering by computing offsets and scaling factors 
+            #based on the resolution and the current grid parameters
             if use_weight_thresh:
                 gsz = torch.tensor(reso)
                 offset = (self._offset * gsz - 0.5).to(device=device)
@@ -1360,6 +1367,7 @@ class SparseGrid(nn.Module):
                     #  np.save(f"wmax_vol/wmax_view{i:05d}.npy", tmp_wt_grid.detach().cpu().numpy())
                 #  import sys
                 #  sys.exit(0)
+                # thresholding for Memory Limits and Final Masking
                 sample_vals_mask = max_wt_grid >= weight_thresh
                 if max_elements > 0 and max_elements < max_wt_grid.numel() \
                                     and max_elements < torch.count_nonzero(sample_vals_mask):
@@ -1371,6 +1379,7 @@ class SparseGrid(nn.Module):
                     sample_vals_mask = max_wt_grid >= weight_thresh
                 del max_wt_grid
             else:
+                #density가 threshold 위일경우 true 
                 sample_vals_mask = sample_vals_density >= sigma_thresh
                 if max_elements > 0 and max_elements < sample_vals_density.numel() \
                                     and max_elements < torch.count_nonzero(sample_vals_mask):
@@ -1379,7 +1388,8 @@ class SparseGrid(nn.Module):
                                      k=max_elements, sorted=False).values.min().item()
                     sigma_thresh = max(sigma_thresh, sigma_thresh_bounded)
                     print(' Readjusted sigma thresh to fit to memory:', sigma_thresh)
-                    sample_vals_mask = sample_vals_density >= sigma_thresh
+                    #() 비교해서 boolean mask
+                    sample_vals_mask = (sample_vals_density >= sigma_thresh)
 
                 if self.opt.last_sample_opaque:
                     # Don't delete the last z layer
@@ -1388,10 +1398,11 @@ class SparseGrid(nn.Module):
             if dilate:
                 for i in range(int(dilate)):
                     sample_vals_mask = _C.dilate(sample_vals_mask)
-            sample_vals_mask = sample_vals_mask.view(-1)
+            sample_vals_mask = sample_vals_mask.view(-1) #reshape to 1d tensor
             sample_vals_density = sample_vals_density.view(-1)
-            sample_vals_density = sample_vals_density[sample_vals_mask]
-            cnz = torch.count_nonzero(sample_vals_mask).item()
+            sample_vals_density = sample_vals_density[sample_vals_mask]#filter the density values.
+            #containing only the density values of the points that passed the threshold
+            cnz = torch.count_nonzero(sample_vals_mask).item() #ounts the number of True values
 
             # Now we can get the colors for the sparse points
             points = points[sample_vals_mask]
@@ -1419,10 +1430,12 @@ class SparseGrid(nn.Module):
                 )
                 init_links[inv_idx] = torch.arange(inv_idx.size(0), dtype=torch.int32)
             else:
-                init_links = (
+                init_links = ( #voxel 변경
+                    #count of the active voxels, position of each significant point in the grid
                     torch.cumsum(sample_vals_mask.to(torch.int32), dim=-1).int() - 1
                 )
-                init_links[~sample_vals_mask] = -1
+                init_links[~sample_vals_mask] = -1#sample_vals_mask가 false인 곳은 -1
+            #init_links  tensor index of each active voxel 
 
             self.capacity = cnz
             print(" New cap:", self.capacity)

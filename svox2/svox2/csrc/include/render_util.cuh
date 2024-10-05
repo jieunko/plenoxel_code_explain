@@ -143,6 +143,7 @@ __device__ __inline__ void trilerp_backward_cuvol_one_density(
               if (mask_out != nullptr) \
                   mask_out[link_ptr[u]] = true; \
         }
+        
     MAYBE_ADD_LINK_DEN(0, ay * az * xo);
     MAYBE_ADD_LINK_DEN(1, ay * pos[2] * xo);
     MAYBE_ADD_LINK_DEN(offy, pos[1] * az * xo);
@@ -408,6 +409,8 @@ __device__ __inline__ void calc_sphfunc(
     }
 }
 
+//computes the backward gradients for two different types of basis functions:
+// trilinear interpolation for 3D textures and a simple gradient for an MLP.
 __device__ __inline__ void calc_sphfunc_backward(
     const PackedSparseGridSpec& grid,
     const int lane_id,
@@ -418,7 +421,8 @@ __device__ __inline__ void calc_sphfunc_backward(
     float* __restrict__ grad_basis_data) {
     if (grad_basis_data == nullptr) return;
     // Placeholder
-    if (grid.basis_type == BASIS_TYPE_3D_TEXTURE) {
+    if (grid.basis_type == BASIS_TYPE_3D_TEXTURE) 
+    {
         float p[3];
         int32_t l[3];
         for (int j = 0; j < 3; ++j) {
@@ -430,16 +434,19 @@ __device__ __inline__ void calc_sphfunc_backward(
             p[j] -= static_cast<float>(l[j]);
         }
 
+        //Synchronizes threads within a warp to ensure that all threads reach this point
         __syncwarp((1U << grid.sh_data_dim) - 1);
         if (lane_id < grid.basis_dim && output_saved[lane_id] > 0.f) {
-            trilerp_backward_one<float, int32_t>(grad_basis_data,
+            trilerp_backward_one<float, int32_t>(grad_basis_data, //computes the gradient for the trilinear interpolation
                     grid.basis_reso,
                     grid.basis_dim,
                     l, p,
                     grad_output[lane_id],
                     lane_id);
         }
-    } else if (grid.basis_type == BASIS_TYPE_MLP) {
+    } 
+    else if (grid.basis_type == BASIS_TYPE_MLP) 
+    {//Calculates the pointer for the gradient of the basis data for the current ray_id
         float* __restrict__ grad_basis_ptr = grad_basis_data + grid.basis_dim * ray_id;
         if (lane_id < grid.basis_dim) {
             const float sig = output_saved[lane_id];

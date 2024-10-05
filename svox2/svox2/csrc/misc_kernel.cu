@@ -106,40 +106,44 @@ __global__ void accel_linf_dist_transform_kernel(
 }
 
 // Geometric L-infty distance transform-ish thing
+//propagate some state information up through the hierarchical levels of a grid. 
 __launch_bounds__(MISC_CUDA_THREADS, MISC_MIN_BLOCKS_PER_SM)
 __global__ void accel_dist_set_kernel(
         const torch::PackedTensorAccessor32<int32_t, 3, torch::RestrictPtrTraits> grid,
-        bool* __restrict__ tmp) {
+        bool* __restrict__ tmp) //output
+ {
     int sz_x = grid.size(0);
     int sz_y = grid.size(1);
     int sz_z = grid.size(2);
     CUDA_GET_THREAD_ID(tid, sz_x * sz_y * sz_z);
 
-    int z = tid % grid.size(2);
-    const int xy = tid / grid.size(2);
-    int y = xy % grid.size(1);
-    int x = xy / grid.size(1);
+    int z = tid % grid.size(2); //z방향 threadid
+    const int xy = tid / grid.size(2); // 2d tensor id
+    int y = xy % grid.size(1); //y방향
+    int x = xy / grid.size(1);//x 방향
 
     bool* tmp_base = tmp;
 
     if (grid[x][y][z] >= 0) {
-        while (sz_x > 1 && sz_y > 1 && sz_z > 1) {
+        while (sz_x > 1 && sz_y > 1 && sz_z > 1) {//propagating state information upward
             // Propagate occupied cell throughout the temp tree parent nodes
-            x >>= 1;
-            y >>= 1;
+            x >>= 1; //division by 2
+            y >>= 1;//moves through successive coarser levels of the grid
             z >>= 1;
-            sz_x = int_div2_ceil(sz_x);
+            sz_x = int_div2_ceil(sz_x); //adjust the size of the grid for the next coarser level
             sz_y = int_div2_ceil(sz_y);
             sz_z = int_div2_ceil(sz_z);
 
+            // flattened index idx for the 3D coordinates (x, y, z) 
             const int idx = x * sz_y * sz_z + y * sz_z + z;
             // printf("s %d  %d %d %d  %d\n", tid, x, y, z, idx);
-            tmp_base[idx] = true;
-            tmp_base += sz_x * sz_y * sz_z;
+            tmp_base[idx] = true;//voxel in the parent grid is occupied
+            tmp_base += sz_x * sz_y * sz_z; //moves the tmp_base pointer to the next location
         }
     }
 }
 
+//compute a value for those grid cells based on their parent cells.
 __launch_bounds__(MISC_CUDA_THREADS, MISC_MIN_BLOCKS_PER_SM)
 __global__ void accel_dist_prop_kernel(
         torch::PackedTensorAccessor32<int32_t, 3, torch::RestrictPtrTraits> grid,
@@ -157,9 +161,10 @@ __global__ void accel_dist_prop_kernel(
     const bool* tmp_base = tmp;
     int32_t* __restrict__ val = &grid[x][y][z]; // val이 grid point야
 
-    if (*val < 0) {
+    if (*val < 0) { //if voxel empty
         int result = -1;
-        while (sz_x > 1 && sz_y > 1 && sz_z > 1) {
+        while (sz_x > 1 && sz_y > 1 && sz_z > 1) 
+        {
             // Find the lowest set parent cell if it exists
             x >>= 1;
             y >>= 1;
@@ -174,7 +179,7 @@ __global__ void accel_dist_prop_kernel(
             if (tmp_base[idx]) {
                 break;
             }
-            result -= 1;
+            result -= 1;//accumulates the distance as the kernel moves upward in the grid
             tmp_base += sz_x * sz_y * sz_z;
         }
         *val = result;
@@ -308,7 +313,7 @@ __device__ __inline__ void grid_trace_ray(
 // }
 
 __launch_bounds__(MISC_CUDA_THREADS, MISC_MIN_BLOCKS_PER_SM)
-__global__ void grid_weight_render_kernel(
+__global__ void (
     const torch::PackedTensorAccessor32<float, 3, torch::RestrictPtrTraits>
         data,
     PackedCameraSpec cam,
@@ -354,27 +359,29 @@ torch::Tensor dilate(torch::Tensor grid) {
     return result;
 }
 
-void accel_dist_prop(torch::Tensor grid) {
+void accel_dist_prop(torch::Tensor grid) {//links input
     // Grid here is links array from the sparse grid
-    DEVICE_GUARD(grid);
+    DEVICE_GUARD(grid); //Ensures that the appropriate CUDA device is selected
     CHECK_INPUT(grid);
-    TORCH_CHECK(!grid.is_floating_point());
-    TORCH_CHECK(grid.ndimension() == 3);
+    TORCH_CHECK(!grid.is_floating_point());//check grid is not float
+    TORCH_CHECK(grid.ndimension() == 3);//check grid is 3d
 
-    int64_t sz_x = grid.size(0);
+    int64_t sz_x = grid.size(0); //the size along the x-axis
     int64_t sz_y = grid.size(1);
     int64_t sz_z = grid.size(2);
 
+    //Total Number of Elements in the Grid
     int Q = grid.size(0) * grid.size(1) * grid.size(2);
 
     const int blocks = CUDA_N_BLOCKS_NEEDED(Q, MISC_CUDA_THREADS);
 
-    int64_t req_size = 0;
+    int64_t req_size = 0;//total number of elements that need to be allocated for the temporary
+    //required size for a temporary tensor tmp
     while (sz_x > 1 && sz_y > 1 && sz_z > 1) {
-        sz_x = int_div2_ceil(sz_x);
-        sz_y = int_div2_ceil(sz_y);
+        sz_x = int_div2_ceil(sz_x); //divides the size by 2 and rounds up
+        sz_y = int_div2_ceil(sz_y); //reduced dimensions
         sz_z = int_div2_ceil(sz_z);
-        req_size += sz_x * sz_y * sz_z;
+        req_size += sz_x * sz_y * sz_z; //reduced total size
     }
 
     auto tmp_options = torch::TensorOptions()
@@ -382,14 +389,14 @@ void accel_dist_prop(torch::Tensor grid) {
                   .layout(torch::kStrided)
                   .device(grid.device())
                   .requires_grad(false);
-    torch::Tensor tmp = torch::zeros({req_size}, tmp_options);
+    torch::Tensor tmp = torch::zeros({req_size}, tmp_options); //create tensor
     device::accel_dist_set_kernel<<<blocks, MISC_CUDA_THREADS>>>(
             grid.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
             tmp.data_ptr<bool>());
 
     device::accel_dist_prop_kernel<<<blocks, MISC_CUDA_THREADS>>>(
             grid.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
-            tmp.data_ptr<bool>());
+            tmp.data_ptr<bool>()); //어?? 이거 왜?
 
 
     // int32_t* tmp;

@@ -256,25 +256,27 @@ __device__ __inline__ void trace_ray_cuvol_backward(
         float* __restrict__ accum_out,
         float* __restrict__ log_transmit_out
         ) {
-    const uint32_t lane_colorgrp_id = lane_id % grid.basis_dim;
-    const uint32_t lane_colorgrp = lane_id / grid.basis_dim;
+    const uint32_t lane_colorgrp_id = lane_id % grid.basis_dim; // specific color group within the lane based on its ID.
+    const uint32_t lane_colorgrp = lane_id / grid.basis_dim; //group number for the lane, which helps organize threads by groups for processing
+                
+    //synchronization among threads to manage shared calculations
     const uint32_t leader_mask = 1U | (1U << grid.basis_dim) | (1U << (2 * grid.basis_dim));
 
-    float accum = fmaf(color_cache[0], grad_output[0],
-                      fmaf(color_cache[1], grad_output[1],
-                           color_cache[2] * grad_output[2]));
+    //color blending color채널의
+    float accum = fmaf(color_cache[0], grad_output[0], //color_cache * grad_output + fmaf
+                      fmaf(color_cache[1], grad_output[1], color_cache[2] * grad_output[2]));
 
-    if (ray.tmin > ray.tmax) {
+    if (ray.tmin > ray.tmax) { //nothing to compute
         if (accum_out != nullptr) { *accum_out = accum; }
         if (log_transmit_out != nullptr) { *log_transmit_out = 0.f; }
         // printf("accum_end_fg_fast=%f\n", accum);
         return;
     }
 
-    if (beta_loss > 0.f) {
+    if (beta_loss > 0.f) { //backpropagation-style adjustment of the loss based on the changes in transmission.
         const float transmit_in = _EXP(log_transmit_in);
         beta_loss *= (1 - transmit_in / (1 - transmit_in + 1e-3)); // d beta_loss / d log_transmit_in
-        accum += beta_loss;
+        accum += beta_loss; //track total loss
         // Interesting how this loss turns out, kinda nice?
     }
 
@@ -285,15 +287,17 @@ __device__ __inline__ void trace_ray_cuvol_backward(
     float log_transmit = 0.f;
 
     // remat samples
-    while (t <= ray.tmax) {
-#pragma unroll 3
-        for (int j = 0; j < 3; ++j) {
-            ray.pos[j] = fmaf(t, ray.dir[j], ray.origin[j]);
-            ray.pos[j] = min(max(ray.pos[j], 0.f), grid.size[j] - 1.f);
+    while (t <= ray.tmax) 
+    {
+       #pragma unroll 3
+        for (int j = 0; j < 3; ++j) { //per channel
+            //t 만큼 앞으로 ray forward
+            ray.pos[j] = fmaf(t, ray.dir[j], ray.origin[j]); //alculates the current position of the ray based on its direction and origin,
+            ray.pos[j] = min(max(ray.pos[j], 0.f), grid.size[j] - 1.f); // clamps it to the grid’s boundarie
             ray.l[j] = min(static_cast<int32_t>(ray.pos[j]), grid.size[j] - 2);
-            ray.pos[j] -= static_cast<float>(ray.l[j]);
+            ray.pos[j] -= static_cast<float>(ray.l[j]); //updates the corresponding grid indices
         }
-        const float skip = compute_skip_dist(ray,
+        const float skip = compute_skip_dist(ray, //Computes the distance to skip based on the ray’s position
                        grid.links, grid.stride_x,
                        grid.size[2], 0);
         if (skip >= opt.step_size) {
@@ -302,7 +306,7 @@ __device__ __inline__ void trace_ray_cuvol_backward(
             continue;
         }
 
-        float sigma = trilerp_cuvol_one(
+        float sigma = trilerp_cuvol_one( //Samples the density value from the grid using trilinear interpolation
                 grid.links,
                 grid.density_data,
                 grid.stride_x,
@@ -315,9 +319,9 @@ __device__ __inline__ void trace_ray_cuvol_backward(
         }
         // if (opt.randomize && opt.random_sigma_std > 0.0) sigma += ray.rng.randn() * opt.random_sigma_std;
         if (sigma > opt.sigma_thresh) {
-            float lane_color = trilerp_cuvol_one(
+            float lane_color = trilerp_cuvol_one( //Retrieves the color associated with the current position and calculates a weighted color based on spherical harmonic functions.
                             grid.links,
-                            grid.sh_data,
+                            grid.sh_data, //spherical harmonics
                             grid.stride_x,
                             grid.size[2],
                             grid.sh_data_dim,
@@ -328,7 +332,7 @@ __device__ __inline__ void trace_ray_cuvol_backward(
             const float weight = _EXP(log_transmit) * (1.f - _EXP(-pcnt));
             log_transmit -= pcnt;
 
-            const float lane_color_total = WarpReducef(temp_storage).HeadSegmentedSum(
+            const float lane_color_total = WarpReducef(temp_storage).HeadSegmentedSum( //color accumulation
                                            weighted_lane_color, lane_colorgrp_id == 0) + 0.5f;
             float total_color = fmaxf(lane_color_total, 0.f);
             float color_in_01 = total_color == lane_color_total;
@@ -350,13 +354,13 @@ __device__ __inline__ void trace_ray_cuvol_backward(
                         curr_grad_sphfunc, grid.basis_dim);
                 curr_grad_sphfunc += curr_grad_up2;
                 if (lane_id < grid.basis_dim) {
-                    grad_sphfunc_val[lane_id] += curr_grad_sphfunc;
+                    grad_sphfunc_val[lane_id] += curr_grad_sphfunc; //Computes gradients for spherical harmonics
                 }
             }
 
             accum -= weight * total_color;
             float curr_grad_sigma = ray.world_step * (
-                    total_color * _EXP(log_transmit) - accum);
+                    total_color * _EXP(log_transmit) - accum); //gradient 계산
             if (sparsity_loss > 0.f) {
                 // Cauchy version (from SNeRG)
                 curr_grad_sigma += sparsity_loss * (4 * sigma / (1 + 2 * (sigma * sigma)));
@@ -364,9 +368,9 @@ __device__ __inline__ void trace_ray_cuvol_backward(
                 // Alphs version (from PlenOctrees)
                 // curr_grad_sigma += sparsity_loss * _EXP(-pcnt) * ray.world_step;
             }
-            trilerp_backward_cuvol_one(grid.links, grads.grad_sh_out,
+            trilerp_backward_cuvol_one(grid.links, grads.grad_sh_out, //propagate gradients through the grid for both color and density.
                     grid.stride_x,
-                    grid.size[2],
+                    grid.size[2],     
                     grid.sh_data_dim,
                     ray.l, ray.pos,
                     curr_grad_color, lane_id);
@@ -384,12 +388,12 @@ __device__ __inline__ void trace_ray_cuvol_backward(
             }
         }
         t += opt.step_size;
-    }
-    if (lane_id == 0) {
+    } //ray tracing 끝
+    if (lane_id == 0) { //If the thread is the leader 
         if (accum_out != nullptr) {
             // Cancel beta loss out in case of background
             accum -= beta_loss;
-            *accum_out = accum;
+            *accum_out = accum; // it assigns the final values of the accumulator and logarithmic transmission to the output pointers.
         }
         if (log_transmit_out != nullptr) { *log_transmit_out = log_transmit; }
         // printf("accum_end_fg=%f\n", accum);
@@ -628,7 +632,7 @@ __global__ void render_ray_kernel(
         PackedSparseGridSpec grid,
         PackedRaysSpec rays,
         RenderOptions opt,
-        torch::PackedTensorAccessor32<float, 2, torch::RestrictPtrTraits> out,
+        torch::PackedTensorAccessor32<float, 2, torch::RestrictPtrTraits> out, //return
         float* __restrict__ log_transmit_out = nullptr) {
     CUDA_GET_THREAD_ID(tid, int(rays.origins.size(0)) * WARP_SIZE);
     const int ray_id = tid >> 5; // a group of 32 threads (one warp)
@@ -757,7 +761,8 @@ __global__ void render_ray_backward_kernel(
             const float resid = color_cache[ray_id * 3 + i] - grad_output[ray_id * 3 + i];
             grad_out[i] = resid * norm_factor;
         }
-    } else {
+    } else 
+    {
 #pragma unroll 3
         for (int i = 0; i < 3; ++i) {
             grad_out[i] = grad_output[ray_id * 3 + i];
@@ -781,7 +786,8 @@ __global__ void render_ray_backward_kernel(
         grads,
         accum_out == nullptr ? nullptr : accum_out + ray_id,
         log_transmit_out == nullptr ? nullptr : log_transmit_out + ray_id);
-    calc_sphfunc_backward(
+    
+    calc_sphfunc_backward( //nothing here.
                  grid, lane_id,
                  ray_id,
                  vdir,
@@ -1141,7 +1147,7 @@ void volume_render_cuvol_fused( // train step에서 rendering
         device::render_ray_backward_kernel<<<blocks, TRACE_RAY_BKWD_CUDA_THREADS>>>(
                 grid,
                 rgb_gt.data_ptr<float>(),
-                rgb_out.data_ptr<float>(),
+                rgb_out.data_ptr<float>(), //grid render된 이미지
                 rays, opt,
                 true,
                 beta_loss > 0.f ? log_transmit.data_ptr<float>() : nullptr,
