@@ -27,7 +27,8 @@ namespace device {
 
 
 // * For ray rendering
-__device__ __inline__ void trace_ray_cuvol(
+__device__ __inline__ void trace_ray_cuvol
+(
         const PackedSparseGridSpec& __restrict__ grid,
         SingleRaySpec& __restrict__ ray,
         const RenderOptions& __restrict__ opt,
@@ -633,7 +634,8 @@ __global__ void render_ray_kernel(
         PackedRaysSpec rays,
         RenderOptions opt,
         torch::PackedTensorAccessor32<float, 2, torch::RestrictPtrTraits> out, //return
-        float* __restrict__ log_transmit_out = nullptr) {
+        float* __restrict__ log_transmit_out = nullptr) 
+    {
     CUDA_GET_THREAD_ID(tid, int(rays.origins.size(0)) * WARP_SIZE);
     const int ray_id = tid >> 5; // a group of 32 threads (one warp)
     const int ray_blk_id = threadIdx.x >> 5; //block을 warp단위로

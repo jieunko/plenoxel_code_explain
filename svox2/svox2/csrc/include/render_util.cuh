@@ -102,7 +102,8 @@ __device__ __inline__ void trilerp_backward_cuvol_one(
         const voxel_index_t* __restrict__ l,
         const float* __restrict__ pos,
         float grad_out,
-        const int idx) {
+        const int idx) 
+{
     const float ay = 1.f - pos[1], az = 1.f - pos[2];
     float xo = (1.0f - pos[0]) * grad_out;
 

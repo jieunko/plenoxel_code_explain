@@ -48,7 +48,8 @@ __global__ void sample_grid_density_kernel(
         PackedSparseGridSpec grid,
         const torch::PackedTensorAccessor32<float, 2, torch::RestrictPtrTraits> points,
         // Output
-        torch::PackedTensorAccessor32<float, 2, torch::RestrictPtrTraits> out) {
+        torch::PackedTensorAccessor32<float, 2, torch::RestrictPtrTraits> out) 
+    {
     CUDA_GET_THREAD_ID(tid, points.size(0));
 
     float point[3] = {points[tid][0], points[tid][1], points[tid][2]};
@@ -76,6 +77,7 @@ __global__ void sample_grid_density_kernel(
     const float ix1 = lerp(ix1y0, ix1y1, point[1]);
     out[tid][0] = lerp(ix0, ix1, point[0]);
 }
+
 #undef MAYBE_READ_LINK_D
 
 __global__ void sample_grid_sh_backward_kernel(
